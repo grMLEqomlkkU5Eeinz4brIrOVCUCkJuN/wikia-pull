@@ -1,0 +1,6 @@
+dist
+node_modules
+eslint*
+tsconfig.json
+tsup.config.ts
+.github

@@ -1,0 +1,1 @@
+export { default as WikiaPull } from "./src/WikiaPull";

@@ -1,0 +1,43 @@
+name: Dependency Update
+
+on:
+  schedule:
+    - cron: '0 0 * * 1' # Weekly on Mondays
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Update dependencies
+      run: |
+        npm update
+        npm audit fix --audit-level moderate
+        
+    - name: Run tests
+      run: |
+        npm run build
+        npm test
+        
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update dependencies'
+        title: 'chore: automated dependency update'
+        body: |
+          This PR contains automated dependency updates.
+          
+          Please review the changes and ensure all tests pass before merging.
+        branch: automated/dependency-update
+        delete-branch: true
