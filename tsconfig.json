@@ -106,6 +106,7 @@
 		"./src/constants.ts",
 		"./src/Dto.ts",
 		"./src/WikiaPull.ts",
+		"./tests/*.ts",
 		"index.ts"
 	]
 }
