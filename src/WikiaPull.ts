@@ -102,9 +102,9 @@ class WikiaPull {
 		return articles;
 	}
 
-	async search(query: string) :Promise<any[]> {
+	async search(query: string) :Promise<EnrichedArticle[]> {
 		const articles = await this.searchResults(query);
-		const articleData: any[] = [];
+		const articleData: EnrichedArticle[] = [];
 		for (let i = 0; i < articles.length; i++) {
 			articleData.push(await this.getArticle(articles[i]))
 		}
