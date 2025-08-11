@@ -28,16 +28,3 @@ jobs:
       run: |
         npm run build
         npm test
-        
-    - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v5
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        commit-message: 'chore: update dependencies'
-        title: 'chore: automated dependency update'
-        body: |
-          This PR contains automated dependency updates.
-          
-          Please review the changes and ensure all tests pass before merging.
-        branch: automated/dependency-update
-        delete-branch: true
