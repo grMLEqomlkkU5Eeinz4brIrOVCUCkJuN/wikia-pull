@@ -12,14 +12,15 @@
 	"license": "ISC",
 	"description": "",
 	"dependencies": {
-		"cheerio": "^1.1.1"
+		"cheerio": "^1.1.1",
+		"domhandler": "^5.0.3"
 	},
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/wikia-pull"
 	},
 	"devDependencies": {
-		"@types/cheerio": "^0.22.35",
+		"@types/cheerio": "^1.0.0",
 		"eslint": "^9.31.0",
 		"tsup": "^8.5.0",
 		"typescript": "^5.8.3"

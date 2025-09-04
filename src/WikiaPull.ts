@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import * as Dto from "./Dto";
 import { FandomSearch } from "./constants";
+import type { Element } from "domhandler";
 
 // Define a more complete article type that includes the scraped content
 interface EnrichedArticle extends Dto.Article {
@@ -21,7 +22,7 @@ class WikiaPull {
 		const $ = cheerio.load(webPage);
 		const articles: Dto.Article[] = [];
 
-		$('.unified-search__result__title').each((index: number, element: cheerio.Element): boolean | void => {
+		$('.unified-search__result__title').each((index: number, element: Element): boolean | void => {
 			if (index >= this.limit) return false; // break when limit reached
 
 			const $element = $(element);
@@ -74,7 +75,7 @@ class WikiaPull {
 		// Extract text content with proper typing
 		const textParagraphs: string[] = [];
 
-		$("p").each((index: number, element: cheerio.Element): void => {
+		$("p").each((index: number, element: Element): void => {
 			const paragraphText = $(element).text();
 			// Only add non-empty paragraphs (after removing whitespace)
 			if (paragraphText.replace(/\s/g, "") !== "") {
