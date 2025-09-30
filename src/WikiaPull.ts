@@ -18,6 +18,113 @@ class WikiaPull {
 		this.wikiUrl = "https://" + fandom + ".fandom.com";
 	}
 
+	// Fetch a page of titles from the Fandom MediaWiki API (AllPages)
+	async #fetchAllPagesBatch(apcontinue?: string): Promise<{ articles: Dto.Article[]; next?: string }> {
+		const params = new URLSearchParams({
+			action: "query",
+			list: "allpages",
+			aplimit: "max",
+			format: "json",
+		});
+		if (apcontinue) params.set("apcontinue", apcontinue);
+
+		const apiUrl = `${this.wikiUrl}/api.php?${params.toString()}`;
+		const res = await fetch(apiUrl);
+		if (!res.ok) throw new Error(`AllPages API error: ${res.status}`);
+		const data: unknown = await res.json();
+
+		// Narrow the expected response shape
+		interface AllPagesPageItem { pageid: number; ns: number; title: string }
+		interface AllPagesResponse {
+			batchcomplete?: string;
+			continue?: { apcontinue?: string };
+			query?: { allpages?: AllPagesPageItem[] };
+		}
+
+		const payload = data as AllPagesResponse;
+		const pages = payload.query?.allpages ?? [];
+		const articles: Dto.Article[] = pages.map((p) => ({
+			id: String(p.pageid),
+			title: p.title,
+			url: `${this.wikiUrl}/wiki/${encodeURIComponent(p.title.replace(/\s/g, "_"))}`,
+		}));
+
+		return {
+			articles,
+			next: payload.continue?.apcontinue,
+		};
+	}
+
+	// List all article stubs (url/id/title) up to an optional max count
+	async listAllArticles(maxItems?: number): Promise<Dto.Article[]> {
+		const collected: Dto.Article[] = [];
+		let cursor: string | undefined = undefined;
+
+		while (true) {
+			const { articles, next } = await this.#fetchAllPagesBatch(cursor);
+			for (const a of articles) {
+				collected.push(a);
+				if (typeof maxItems === "number" && collected.length >= maxItems) {
+					return collected;
+				}
+			}
+			if (!next) break;
+			cursor = next;
+		}
+
+		return collected;
+	}
+
+	// Return the exact number of content pages (articles) reported by MediaWiki statistics
+	async getArticleCount(): Promise<number> {
+		const params = new URLSearchParams({
+			action: "query",
+			meta: "siteinfo",
+			siprop: "statistics",
+			format: "json",
+		});
+		const apiUrl = `${this.wikiUrl}/api.php?${params.toString()}`;
+		const res = await fetch(apiUrl);
+		if (!res.ok) throw new Error(`SiteInfo API error: ${res.status}`);
+		const data: unknown = await res.json();
+		interface StatsResponse { query?: { statistics?: { articles?: number } } }
+		const payload = data as StatsResponse;
+		const articles = payload.query?.statistics?.articles;
+		if (typeof articles !== "number") {
+			throw new Error("Failed to read article count from site statistics");
+		}
+		return articles;
+	}
+
+	// Get full content for all articles (useful for RAG). Optionally limit total items.
+	async getAllArticles(maxItems?: number): Promise<EnrichedArticle[]> {
+		const list = await this.listAllArticles(maxItems);
+		const results: EnrichedArticle[] = [];
+		for (let i = 0; i < list.length; i++) {
+			results.push(await this.getArticle(list[i]));
+		}
+		return results;
+	}
+
+	// Async generator variant to stream results progressively
+	async *streamAllArticles(maxItems?: number): AsyncGenerator<EnrichedArticle> {
+		let produced = 0;
+		let cursor: string | undefined = undefined;
+		while (true) {
+			const { articles, next } = await this.#fetchAllPagesBatch(cursor);
+			for (const article of articles) {
+				const enriched = await this.getArticle(article);
+				yield enriched;
+				produced++;
+				if (typeof maxItems === "number" && produced >= maxItems) {
+					return;
+				}
+			}
+			if (!next) return;
+			cursor = next;
+		}
+	}
+
 	#getSearchData(webPage: string): Dto.Article[] {
 		const $ = cheerio.load(webPage);
 		const articles: Dto.Article[] = [];
@@ -44,11 +151,11 @@ class WikiaPull {
 		try {
 			const res = await fetch(pageUrl);
 			if (!res.ok) {
-				throw new Error(`HTTP error! status: ${res.status}`);
+				throw new Error(`HTTP error ${res.status} while fetching ${pageUrl}`);
 			}
 			return await res.text();
 		} catch (error) {
-			throw new Error(`Failed to download page: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			throw new Error(`Failed to download page (${pageUrl}): ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}
 
