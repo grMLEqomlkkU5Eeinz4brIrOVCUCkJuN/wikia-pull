@@ -56,6 +56,51 @@ const wiki = new WikiaPull("jojo", 1);
 wiki.search('Josuke Higashikata').then(console.log);
 ```
 
+### Enumerate all pages (stubs only)
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+// Returns an array of { id, title, url }
+const stubs = await wiki.listAllArticles(1000); // optional limit
+console.log('Got', stubs.length, 'stubs');
+```
+
+### Fetch all articles with content (batch)
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+// Returns an array of enriched articles with img and article text
+const articles = await wiki.getAllArticles(50); // optional limit
+console.log('First:', articles[0]);
+```
+
+### Stream articles (preferred for large RAG ingestions)
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+let count = 0;
+for await (const article of wiki.streamAllArticles(100)) {
+  // Send incrementally to a vector DB or file sink
+  console.log(`#${++count}`, article.title, '-', article.url);
+}
+```
+
+### Get exact article count
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+const total = await wiki.getArticleCount();
+console.log('This wiki reports', total, 'articles');
+```
+
 ---
 
 ## 📄 Example Output
@@ -98,6 +143,8 @@ new WikiaPull(fandom: string, limit?: number)
   - Returns enriched articles for all pages (may be slow on large wikis). Use `maxItems` to limit.
 \- `streamAllArticles(maxItems?: number): AsyncGenerator<EnrichedArticle>`
   - Async generator that yields enriched articles progressively, useful for streaming ingestion.
+\- `getArticleCount(): Promise<number>`
+  - Returns the exact article count using MediaWiki site statistics.
 
 ### Types
 
@@ -123,6 +170,8 @@ Example scripts are available in the `tests/` directory:
 - `searchResults.ts` — Prints raw search result metadata.
 - `getArticles.ts` — Fetches and prints a single enriched article from search results.
 \- `allItems.ts` — Enumerates or streams all pages; handy for building RAG datasets.
+\- `articleCount.ts` — Prints the exact number of articles via site statistics.
+\- `streamToFiles.ts` — Streams enriched articles and writes each to a text file.
 
 ### RAG-oriented enumeration example
 
@@ -145,18 +194,41 @@ for await (const article of wiki.streamAllArticles(100)) { // limit to 100 for d
 console.log("streamed", count);
 ```
 
+### Stream to files example
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const wiki = new WikiaPull('jojo');
+const outDir = './output';
+if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+let n = 0;
+for await (const article of wiki.streamAllArticles(25)) {
+  const filename = article.title.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_').slice(0, 100);
+  const filepath = path.join(outDir, `${filename}.txt`);
+  const content = `Title: ${article.title}\nURL: ${article.url}\nID: ${article.id}\nImage: ${article.img || 'None'}\n\n${article.article || ''}`;
+  fs.writeFileSync(filepath, content, 'utf8');
+  console.log(`Saved #${++n}:`, filepath);
+}
+```
+
 ---
 
 ## ⚠️ Error Handling
 
 - Throws an error if no articles are found for a query.
 - Throws an error if a network request fails or an article URL is missing.
+- Errors include the failing URL when possible, e.g. `HTTP error 404 while fetching https://<wiki>/...`.
+- For streaming, consider try/catch per item to skip transient failures and continue ingestion.
 
 ---
 
 ## 🙏 Credits
 
-This project is a TypeScript implementation of
+This project is a TypeScript implementation (with additional features) of
 [**HermitPurple**](https://github.com/Soft-Wet-Bot/HermitPurple) by [**GeopJr**](https://github.com/GeopJr).
 
 Inspired by [@yimura/scraper](https://github.com/Yimura/Scraper).
