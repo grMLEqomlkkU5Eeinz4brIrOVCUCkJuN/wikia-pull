@@ -9,6 +9,10 @@ interface EnrichedArticle extends Dto.Article {
 	article?: string;
 }
 
+const DEFAULT_HEADERS = {
+	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+};
+
 class WikiaPull {
 	wikiUrl: string;
 	limit: number;
@@ -29,7 +33,7 @@ class WikiaPull {
 		if (apcontinue) params.set("apcontinue", apcontinue);
 
 		const apiUrl = `${this.wikiUrl}/api.php?${params.toString()}`;
-		const res = await fetch(apiUrl);
+		const res = await fetch(apiUrl, { headers: DEFAULT_HEADERS });
 		if (!res.ok) throw new Error(`AllPages API error: ${res.status}`);
 		const data: unknown = await res.json();
 
@@ -84,7 +88,7 @@ class WikiaPull {
 			format: "json",
 		});
 		const apiUrl = `${this.wikiUrl}/api.php?${params.toString()}`;
-		const res = await fetch(apiUrl);
+		const res = await fetch(apiUrl, { headers: DEFAULT_HEADERS });
 		if (!res.ok) throw new Error(`SiteInfo API error: ${res.status}`);
 		const data: unknown = await res.json();
 		interface StatsResponse { query?: { statistics?: { articles?: number } } }
@@ -149,7 +153,7 @@ class WikiaPull {
 
 	async #downloadPage(pageUrl: string): Promise<string> {
 		try {
-			const res = await fetch(pageUrl);
+			const res = await fetch(pageUrl, { headers: DEFAULT_HEADERS });
 			if (!res.ok) {
 				throw new Error(`HTTP error ${res.status} while fetching ${pageUrl}`);
 			}
@@ -160,40 +164,52 @@ class WikiaPull {
 	}
 
 	async getArticle(article: Dto.Article): Promise<EnrichedArticle> {
-		// Better property checking
-		if (!article.url) {
-			throw new Error("Article URL is required");
+		if (!article.id && !article.title) {
+			throw new Error("Article id or title is required");
 		}
 
-		const webPage = await this.#downloadPage(article.url);
-		const $ = cheerio.load(webPage);
+		const params = new URLSearchParams({
+			action: "parse",
+			format: "json",
+			prop: "text",
+		});
+		if (article.id) {
+			params.set("pageid", article.id);
+		} else {
+			params.set("page", article.title);
+		}
 
-		// Create enriched article with proper typing
+		const apiUrl = `${this.wikiUrl}/api.php?${params.toString()}`;
+		const res = await fetch(apiUrl, { headers: DEFAULT_HEADERS });
+		if (!res.ok) throw new Error(`Parse API error: ${res.status}`);
+		const data: unknown = await res.json();
+
+		interface ParseResponse { parse?: { title?: string; pageid?: number; text?: { "*": string } } }
+		const payload = data as ParseResponse;
+		const htmlText = payload.parse?.text?.["*"] ?? "";
+
+		const $ = cheerio.load(htmlText);
+
 		const enrichedArticle: EnrichedArticle = {
-			...article, // spread the original article properties
+			...article,
 			img: $('.pi-image-thumbnail').prop("src") || $('.image').prop("href") || undefined,
 		};
 
-		// Clean up the DOM
 		$("aside").remove();
 		$(".cquote").remove();
 		$("gallery").remove();
 
-		// Extract text content with proper typing
 		const textParagraphs: string[] = [];
-
 		$("p").each((index: number, element: Element): void => {
 			const paragraphText = $(element).text();
-			// Only add non-empty paragraphs (after removing whitespace)
 			if (paragraphText.replace(/\s/g, "") !== "") {
 				textParagraphs.push(paragraphText);
 			}
 		});
 
-		// Clean and join the text
 		enrichedArticle.article = textParagraphs
 			.join(" ")
-			.replace(/(\r\n|\n|\r)|(\[\d+\])/gm, ""); // remove newlines and numeric anchors
+			.replace(/(\r\n|\n|\r)|(\[\d+\])/gm, "");
 
 		return enrichedArticle;
 	}
@@ -204,10 +220,29 @@ class WikiaPull {
 	}
 
 	async searchResults(query: string): Promise<Dto.Article[]> {
-		const webPage = await this.fetch(query);
-		const articles: Dto.Article[] = this.#getSearchData(webPage);
-		if (articles.length === 0) throw new Error("No articles found");
-		return articles;
+		const params = new URLSearchParams({
+			action: "query",
+			list: "search",
+			srsearch: query,
+			srlimit: String(this.limit),
+			format: "json",
+		});
+		const apiUrl = `${this.wikiUrl}/api.php?${params.toString()}`;
+		const res = await fetch(apiUrl, { headers: DEFAULT_HEADERS });
+		if (!res.ok) throw new Error(`Search API error: ${res.status}`);
+		const data: unknown = await res.json();
+
+		interface SearchItem { pageid: number; title: string }
+		interface SearchResponse { query?: { search?: SearchItem[] } }
+		const payload = data as SearchResponse;
+		const items = payload.query?.search ?? [];
+		if (items.length === 0) throw new Error("No articles found");
+
+		return items.map((item) => ({
+			id: String(item.pageid),
+			title: item.title,
+			url: `${this.wikiUrl}/wiki/${encodeURIComponent(item.title.replace(/\s/g, "_"))}`,
+		}));
 	}
 
 	async search(query: string) :Promise<EnrichedArticle[]> {
