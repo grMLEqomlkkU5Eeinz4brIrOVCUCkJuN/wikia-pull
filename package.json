@@ -18,7 +18,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/wikia-pull"
+		"url": "git+https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/wikia-pull.git"
 	},
 	"devDependencies": {
 		"@types/cheerio": "^1.0.0",
