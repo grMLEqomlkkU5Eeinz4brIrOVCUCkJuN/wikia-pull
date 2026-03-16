@@ -23,7 +23,7 @@
 	"devDependencies": {
 		"@types/cheerio": "^1.0.0",
 		"@types/node": "^25.0.3",
-		"eslint": "^9.31.0",
+		"eslint": "^10.0.3",
 		"tsup": "^8.5.0",
 		"typescript": "^5.8.3"
 	}
