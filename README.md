@@ -101,6 +101,66 @@ const total = await wiki.getArticleCount();
 console.log('This wiki reports', total, 'articles');
 ```
 
+### Build an in-memory index
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+const index = await wiki.buildIndex(); // optional limit: buildIndex(1000)
+
+// O(1) lookups
+const page = index.lookupById('11883');
+const page2 = index.lookupByTitle('Josuke Higashikata'); // case-insensitive
+
+// Prefix search
+const hits = index.searchByTitle('Jos');
+
+// Persist to disk and reload later (avoids re-scraping)
+index.save('./jojo-index.json');
+const loaded = WikiIndex.load('./jojo-index.json');
+```
+
+### Stream index entries into your own storage
+
+`streamIndex` uses `list=allpages` (the API equivalent of `Special:AllPages`) to
+yield raw `Article` items one by one without building any in-memory structure.
+Use it to write entries directly into a database, file, vector store, or any
+other sink.
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+
+for await (const article of wiki.streamIndex()) {
+  // article: { id, title, url }
+  await db.collection('pages').insertOne(article);
+}
+```
+
+SQLite example:
+
+```ts
+import Database from 'better-sqlite3';
+import { WikiaPull } from 'wikia-pull';
+
+const db = new Database('wiki.db');
+db.exec(`CREATE TABLE IF NOT EXISTS pages (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  url TEXT
+)`);
+const insert = db.prepare(
+  'INSERT OR REPLACE INTO pages VALUES (@id, @title, @url)'
+);
+
+const wiki = new WikiaPull('jojo');
+for await (const article of wiki.streamIndex()) {
+  insert.run(article);
+}
+```
+
 ---
 
 ## 📄 Example Output
@@ -137,14 +197,28 @@ new WikiaPull(fandom: string, limit?: number)
   - Returns raw search result metadata only.
 - `getArticle(article: Article): Promise<EnrichedArticle>`
   - Fetches a single article by its URL and enriches it with summary and image.
-\- `listAllArticles(maxItems?: number): Promise<Article[]>`
+- `listAllArticles(maxItems?: number): Promise<Article[]>`
   - Returns an array of all article stubs (url/id/title). Use `maxItems` to stop early.
-\- `getAllArticles(maxItems?: number): Promise<EnrichedArticle[]>`
+- `getAllArticles(maxItems?: number): Promise<EnrichedArticle[]>`
   - Returns enriched articles for all pages (may be slow on large wikis). Use `maxItems` to limit.
-\- `streamAllArticles(maxItems?: number): AsyncGenerator<EnrichedArticle>`
+- `streamAllArticles(maxItems?: number): AsyncGenerator<EnrichedArticle>`
   - Async generator that yields enriched articles progressively, useful for streaming ingestion.
-\- `getArticleCount(): Promise<number>`
+- `getArticleCount(): Promise<number>`
   - Returns the exact article count using MediaWiki site statistics.
+- `streamIndex(maxItems?: number): AsyncGenerator<Article>`
+  - Async generator that yields `Article` items using `list=allpages` (the API equivalent of `Special:AllPages`), filtered to namespace 0 non-redirects. No in-memory structure is built — pipe directly into a database, file, or any other sink.
+- `buildIndex(maxItems?: number): Promise<WikiIndex>`
+  - Convenience wrapper around `streamIndex` that collects all entries into an in-memory `WikiIndex` with O(1) lookups. For large wikis or custom storage use `streamIndex` instead.
+
+### `WikiIndex`
+
+Returned by `buildIndex`. Holds the full index in memory and provides fast lookups.
+
+- `lookupById(id: string): Article | undefined` — O(1) lookup by MediaWiki page ID.
+- `lookupByTitle(title: string): Article | undefined` — O(1) case-insensitive exact title match.
+- `searchByTitle(prefix: string): Article[]` — returns all entries whose title starts with `prefix` (case-insensitive).
+- `save(filepath: string): void` — serializes the index to a JSON file so it can be reloaded without re-scraping.
+- `WikiIndex.load(filepath: string): WikiIndex` — deserializes a previously saved index from a JSON file.
 
 ### Types
 
@@ -169,9 +243,10 @@ Example scripts are available in the `tests/` directory:
 - `search.ts` — Fetches and prints enriched articles for a query.
 - `searchResults.ts` — Prints raw search result metadata.
 - `getArticles.ts` — Fetches and prints a single enriched article from search results.
-\- `allItems.ts` — Enumerates or streams all pages; handy for building RAG datasets.
-\- `articleCount.ts` — Prints the exact number of articles via site statistics.
-\- `streamToFiles.ts` — Streams enriched articles and writes each to a text file.
+- `allItems.ts` — Enumerates or streams all pages; handy for building RAG datasets.
+- `articleCount.ts` — Prints the exact number of articles via site statistics.
+- `streamToFiles.ts` — Streams enriched articles and writes each to a text file.
+- `buildIndex.ts` — Tests `streamIndex` and `buildIndex`: validates `Article` fields, lookups, prefix search, and save/load round-trip.
 
 ### RAG-oriented enumeration example
 

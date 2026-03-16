@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import * as Dto from "./Dto";
 import { FandomSearch } from "./constants";
 import type { Element } from "domhandler";
+import WikiIndex from "./WikiIndex";
 
 // Define a more complete article type that includes the scraped content
 interface EnrichedArticle extends Dto.Article {
@@ -253,6 +254,71 @@ class WikiaPull {
 		}
 
 		return articleData;
+	}
+
+	// Async generator that yields Article items one by one using list=allpages
+	// (the API equivalent of Special:AllPages), filtered to namespace 0
+	// non-redirects. No in-memory structure is built — pipe directly into a
+	// database, file, or any other sink of your choice.
+	async *streamIndex(maxItems?: number): AsyncGenerator<Dto.Article> {
+		let produced = 0;
+		let cursor: string | undefined = undefined;
+
+		while (true) {
+			const params = new URLSearchParams({
+				action: "query",
+				list: "allpages",
+				aplimit: "max",
+				apnamespace: "0",
+				apfilterredir: "nonredirects",
+				format: "json",
+			});
+			if (cursor) params.set("apcontinue", cursor);
+
+			const apiUrl = `${this.wikiUrl}/api.php?${params.toString()}`;
+			const res = await fetch(apiUrl, { headers: DEFAULT_HEADERS });
+			if (!res.ok) throw new Error(`AllPages API error: ${res.status}`);
+			const data: unknown = await res.json();
+
+			interface AllPagesPageItem { pageid: number; ns: number; title: string }
+			interface AllPagesResponse {
+				continue?: { apcontinue?: string };
+				query?: { allpages?: AllPagesPageItem[] };
+			}
+
+			const payload = data as AllPagesResponse;
+			const pages = payload.query?.allpages ?? [];
+
+			for (const p of pages) {
+				yield {
+					id: String(p.pageid),
+					title: p.title,
+					url: `${this.wikiUrl}/wiki/${encodeURIComponent(p.title.replace(/\s/g, "_"))}`,
+				};
+				produced++;
+				if (typeof maxItems === "number" && produced >= maxItems) return;
+			}
+
+			cursor = payload.continue?.apcontinue;
+			if (!cursor) return;
+		}
+	}
+
+	// Convenience wrapper around streamIndex that collects all entries into an
+	// in-memory WikiIndex (with O(1) lookups by id/title). For large wikis or
+	// custom storage prefer streamIndex instead.
+	async buildIndex(maxItems?: number): Promise<WikiIndex> {
+		const entries: Dto.Article[] = [];
+		for await (const article of this.streamIndex(maxItems)) {
+			entries.push(article);
+		}
+		const fandom = this.wikiUrl.replace("https://", "").replace(".fandom.com", "");
+		return new WikiIndex({
+			fandom,
+			createdAt: new Date().toISOString(),
+			articleCount: entries.length,
+			entries,
+		});
 	}
 
 }
