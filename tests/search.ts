@@ -36,6 +36,23 @@ async function main() {
 	assert(typeof firstWithImages.article === "string" && firstWithImages.article.length > 0, "article text should still be present with images option");
 	console.log(`  ✓ search with images returned ${firstWithImages.images!.length} image(s)`);
 
+	// --- search with rawContent option ---
+	console.log("Testing search() with { rawContent: true }...");
+	const withRaw = await wiki.search("PoD", { rawContent: true });
+	assert(withRaw.length > 0, "search with rawContent should return results");
+
+	const firstWithRaw = withRaw[0];
+	assert(typeof firstWithRaw.rawContent === "string" && firstWithRaw.rawContent.length > 0, "rawContent should be a non-empty string when requested");
+	assert(typeof firstWithRaw.rawHtml === "string" && firstWithRaw.rawHtml.length > 0, "rawHtml should be a non-empty string when requested");
+	assert(firstWithRaw.rawContent!.length >= firstWithRaw.article!.length, "rawContent should be at least as long as article text");
+	assert(typeof firstWithRaw.article === "string" && firstWithRaw.article.length > 0, "article text should still be present with rawContent option");
+	console.log(`  ✓ search with rawContent returned ${firstWithRaw.rawContent!.length} chars (vs ${firstWithRaw.article!.length} article chars)`);
+
+	// --- search without rawContent should not have raw fields ---
+	assert(first.rawContent === undefined, "rawContent should be undefined when not requested");
+	assert(first.rawHtml === undefined, "rawHtml should be undefined when not requested");
+	console.log("  ✓ rawContent/rawHtml are undefined when not requested");
+
 	console.log("\nAll search tests passed.");
 }
 

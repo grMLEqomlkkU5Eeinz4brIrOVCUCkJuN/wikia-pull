@@ -9,10 +9,13 @@ interface EnrichedArticle extends Dto.Article {
 	img?: string;
 	images?: string[];
 	article?: string;
+	rawContent?: string;
+	rawHtml?: string;
 }
 
 interface GetArticleOptions {
 	images?: boolean;
+	rawContent?: boolean;
 }
 
 const DEFAULT_HEADERS = {
@@ -213,6 +216,11 @@ class WikiaPull {
 		$("aside").remove();
 		$(".cquote").remove();
 		$("gallery").remove();
+
+		if (options?.rawContent) {
+			enrichedArticle.rawHtml = $.html();
+			enrichedArticle.rawContent = $.text().replace(/(\r\n|\n|\r)/gm, " ").replace(/\s{2,}/g, " ").trim();
+		}
 
 		const textParagraphs: string[] = [];
 		$("p").each((index: number, element: Element): void => {

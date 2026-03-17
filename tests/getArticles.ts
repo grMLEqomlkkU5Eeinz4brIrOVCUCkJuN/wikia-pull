@@ -40,6 +40,32 @@ async function main() {
 
 	console.log(`  ✓ getArticle with images returned ${articleWithImages.images!.length} image(s)`);
 
+	// --- getArticle: with rawContent ---
+	console.log("Testing getArticle() with { rawContent: true }...");
+	const articleWithRaw = await wiki.getArticle(results[0], { rawContent: true });
+
+	assert(typeof articleWithRaw.rawContent === "string" && articleWithRaw.rawContent.length > 0, "rawContent should be a non-empty string when requested");
+	assert(typeof articleWithRaw.rawHtml === "string" && articleWithRaw.rawHtml.length > 0, "rawHtml should be a non-empty string when requested");
+	assert(articleWithRaw.rawHtml!.includes("<"), "rawHtml should contain HTML tags");
+	assert(articleWithRaw.rawContent!.length >= articleWithRaw.article!.length, "rawContent should be at least as long as article text");
+	assert(typeof articleWithRaw.article === "string" && articleWithRaw.article.length > 0, "article text should still be present with rawContent option");
+
+	console.log(`  ✓ getArticle with rawContent: ${articleWithRaw.rawContent!.length} chars text, ${articleWithRaw.rawHtml!.length} chars HTML`);
+
+	// --- getArticle: without rawContent should not have raw fields ---
+	assert(article.rawContent === undefined, "rawContent should be undefined when not requested");
+	assert(article.rawHtml === undefined, "rawHtml should be undefined when not requested");
+	console.log("  ✓ rawContent/rawHtml are undefined when not requested");
+
+	// --- getArticle: with both images and rawContent ---
+	console.log("Testing getArticle() with { images: true, rawContent: true }...");
+	const articleWithBoth = await wiki.getArticle(results[0], { images: true, rawContent: true });
+
+	assert(Array.isArray(articleWithBoth.images), "images should be present when both options used");
+	assert(typeof articleWithBoth.rawContent === "string" && articleWithBoth.rawContent.length > 0, "rawContent should be present when both options used");
+	assert(typeof articleWithBoth.rawHtml === "string" && articleWithBoth.rawHtml.length > 0, "rawHtml should be present when both options used");
+	console.log(`  ✓ getArticle with both options: ${articleWithBoth.images!.length} images, ${articleWithBoth.rawContent!.length} chars raw`);
+
 	console.log("\nAll getArticle tests passed.");
 }
 
