@@ -11,16 +11,20 @@ interface EnrichedArticle extends Dto.Article {
 	article?: string;
 	rawContent?: string;
 	rawHtml?: string;
+	rawPageContent?: string;
 }
 
 interface GetArticleOptions {
 	images?: boolean;
 	rawContent?: boolean;
+	rawPageContent?: boolean;
 }
 
 const DEFAULT_HEADERS = {
 	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 };
+
+type CheerioAPI = ReturnType<typeof cheerio.load>;
 
 class WikiaPull {
 	wikiUrl: string;
@@ -172,6 +176,66 @@ class WikiaPull {
 		}
 	}
 
+	// Convert HTML tables to markdown tables preserving structure for vector search / RAG
+	#tableToMarkdown($: CheerioAPI, table: Element): string {
+		const rows: string[][] = [];
+		$(table).find("tr").each((_: number, tr: Element) => {
+			const cells: string[] = [];
+			$(tr).find("th, td").each((_: number, cell: Element) => {
+				cells.push($(cell).text().replace(/\s+/g, " ").trim());
+			});
+			if (cells.length > 0) rows.push(cells);
+		});
+		if (rows.length === 0) return "";
+
+		// Normalize column count
+		const maxCols = Math.max(...rows.map(r => r.length));
+		for (const row of rows) {
+			while (row.length < maxCols) row.push("");
+		}
+
+		const lines: string[] = [];
+		lines.push("| " + rows[0].join(" | ") + " |");
+		lines.push("| " + rows[0].map(() => "---").join(" | ") + " |");
+		for (let i = 1; i < rows.length; i++) {
+			lines.push("| " + rows[i].join(" | ") + " |");
+		}
+		return lines.join("\n");
+	}
+
+	// Extract structured text from HTML, converting tables to markdown and preserving headers/lists
+	#extractStructuredText($: CheerioAPI): string {
+		const parts: string[] = [];
+
+		$("body > *, .mw-parser-output > *").each((_: number, el: Element) => {
+			const tag = (el as unknown as { tagName: string }).tagName?.toLowerCase();
+			const $el = $(el);
+
+			if (tag === "table" || $el.find("table").length > 0) {
+				// Process tables within this element
+				const tables = tag === "table" ? $el : $el.find("table");
+				tables.each((_: number, tbl: Element) => {
+					const md = this.#tableToMarkdown($, tbl);
+					if (md) parts.push(md);
+				});
+			} else if (/^h[1-6]$/.test(tag)) {
+				const level = parseInt(tag[1]);
+				const text = $el.text().trim();
+				if (text) parts.push("#".repeat(level) + " " + text);
+			} else if (tag === "ul" || tag === "ol") {
+				$el.find("li").each((i: number, li: Element) => {
+					const text = $(li).text().replace(/\s+/g, " ").trim();
+					if (text) parts.push(tag === "ol" ? `${i + 1}. ${text}` : `- ${text}`);
+				});
+			} else {
+				const text = $el.text().replace(/\s+/g, " ").trim();
+				if (text) parts.push(text);
+			}
+		});
+
+		return parts.join("\n\n");
+	}
+
 	async getArticle(article: Dto.Article, options?: GetArticleOptions): Promise<EnrichedArticle> {
 		if (!article.id && !article.title) {
 			throw new Error("Article id or title is required");
@@ -213,17 +277,22 @@ class WikiaPull {
 			enrichedArticle.images = images;
 		}
 
+		// rawPageContent: full structured text with NOTHING stripped (before any cleanup)
+		if (options?.rawPageContent) {
+			enrichedArticle.rawPageContent = this.#extractStructuredText($);
+		}
+
 		$("aside").remove();
 		$(".cquote").remove();
 		$("gallery").remove();
 
 		if (options?.rawContent) {
 			enrichedArticle.rawHtml = $.html();
-			enrichedArticle.rawContent = $.text().replace(/(\r\n|\n|\r)/gm, " ").replace(/\s{2,}/g, " ").trim();
+			enrichedArticle.rawContent = this.#extractStructuredText($);
 		}
 
 		const textParagraphs: string[] = [];
-		$("p").each((index: number, element: Element): void => {
+		$("p").each((_: number, element: Element): void => {
 			const paragraphText = $(element).text();
 			if (paragraphText.replace(/\s/g, "") !== "") {
 				textParagraphs.push(paragraphText);

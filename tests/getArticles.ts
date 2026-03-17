@@ -57,6 +57,23 @@ async function main() {
 	assert(article.rawHtml === undefined, "rawHtml should be undefined when not requested");
 	console.log("  ✓ rawContent/rawHtml are undefined when not requested");
 
+	// --- getArticle: with rawPageContent ---
+	console.log("Testing getArticle() with { rawPageContent: true }...");
+	const articleWithRawPage = await wiki.getArticle(results[0], { rawPageContent: true });
+
+	assert(typeof articleWithRawPage.rawPageContent === "string" && articleWithRawPage.rawPageContent.length > 0, "rawPageContent should be a non-empty string when requested");
+	assert(articleWithRawPage.rawPageContent!.length >= articleWithRawPage.article!.length, "rawPageContent should be at least as long as article text");
+	assert(typeof articleWithRawPage.article === "string" && articleWithRawPage.article.length > 0, "article text should still be present with rawPageContent option");
+	console.log(`  ✓ getArticle with rawPageContent: ${articleWithRawPage.rawPageContent!.length} chars`);
+
+	// --- getArticle: rawPageContent should include content stripped from rawContent (aside, cquote, gallery) ---
+	assert(articleWithRawPage.rawPageContent!.length >= articleWithRaw.rawContent!.length, "rawPageContent should be >= rawContent since nothing is stripped");
+	console.log("  ✓ rawPageContent >= rawContent (nothing stripped)");
+
+	// --- getArticle: without rawPageContent should not have the field ---
+	assert(article.rawPageContent === undefined, "rawPageContent should be undefined when not requested");
+	console.log("  ✓ rawPageContent is undefined when not requested");
+
 	// --- getArticle: with both images and rawContent ---
 	console.log("Testing getArticle() with { images: true, rawContent: true }...");
 	const articleWithBoth = await wiki.getArticle(results[0], { images: true, rawContent: true });

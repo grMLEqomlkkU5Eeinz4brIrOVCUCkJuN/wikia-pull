@@ -28,6 +28,8 @@ yarn add wikia-pull
 * Search Fandom/Wikia sites by keyword
 * Fetch full article summaries and metadata
 * Enumerate all pages via MediaWiki API (great for RAG corpora)
+* **Table structure preservation** — HTML tables are converted to markdown tables for optimal vector search and RAG chunking
+* **Multiple extraction modes** — `article` (paragraphs only), `rawContent` (structured with cleanup), `rawPageContent` (complete, nothing stripped)
 * Supports both CommonJS and ESModule usage
 * Handles sites with disabled APIs or custom structures
 
@@ -91,7 +93,7 @@ The `{ images: true }` option works with `getArticle`, `search`, `getAllArticles
 
 ### Fetch articles with raw content (tables, lists, headers)
 
-By default, only `<p>` tags are extracted into the `article` field — tables, lists, and headers are stripped. Use `{ rawContent: true }` to get everything:
+By default, only `<p>` tags are extracted into the `article` field — tables, lists, and headers are stripped. Use `{ rawContent: true }` to get structured content with tables preserved as markdown:
 
 ```ts
 import { WikiaPull } from 'wikia-pull';
@@ -99,12 +101,43 @@ import { WikiaPull } from 'wikia-pull';
 const wiki = new WikiaPull('jojo');
 const results = await wiki.search('Josuke Higashikata', { rawContent: true });
 
-console.log(results[0].rawContent); // Full plain text including tables, lists, headers
+console.log(results[0].rawContent); // Structured text with markdown tables, headers, lists
 console.log(results[0].rawHtml);    // Cleaned HTML with structure preserved
 console.log(results[0].article);    // Still available — paragraph-only text (unchanged)
 ```
 
+Tables are converted to markdown format for optimal vector search and RAG performance:
+
+```
+| Name | Stand | Part |
+| --- | --- | --- |
+| Josuke | Crazy Diamond | 4 |
+| Giorno | Gold Experience | 5 |
+```
+
+Headers become `## Heading`, lists become `- item` or `1. item`.
+
+Note: `rawContent` still strips infobox sidebars (`<aside>`), quote styling (`.cquote`), and galleries before extraction. If you need absolutely everything, use `rawPageContent` instead.
+
 The `{ rawContent: true }` option works with `getArticle`, `search`, `getAllArticles`, and `streamAllArticles`. Both options can be combined: `{ images: true, rawContent: true }`.
+
+### Fetch complete unfiltered page content
+
+Use `{ rawPageContent: true }` when you want the entire page with **nothing stripped** — infoboxes, quotes, galleries, tables, and all other content are preserved. This is ideal for RAG systems where every piece of information matters:
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+const results = await wiki.search('Josuke Higashikata', { rawPageContent: true });
+
+console.log(results[0].rawPageContent); // Complete page content, nothing removed
+console.log(results[0].article);        // Still available — paragraph-only text
+```
+
+`rawPageContent` uses the same structured extraction as `rawContent` (markdown tables, headers, lists) but runs **before** any DOM cleanup, so infobox data, quotes, and gallery captions are all included.
+
+All options can be combined: `{ images: true, rawContent: true, rawPageContent: true }`.
 
 ### Stream articles (preferred for large RAG ingestions)
 
@@ -231,8 +264,23 @@ With `{ rawContent: true }`:
     "id": "11883",
     "url": "https://jojo.fandom.com/wiki/Josuke_Higashikata_(JoJolion)",
     "img": "https://static.wikia.nocookie.net/jjba/images/d/d2/Jo2uke.png",
-    "rawContent": "Josuke Higashikata Appearance Josuke is a ... Stand Diamond is Unbreakable ...",
+    "rawContent": "## Appearance\n\nJosuke is a ...\n\n| Stand | User | Part |\n| --- | --- | --- |\n| Crazy Diamond | Josuke | 4 |",
     "rawHtml": "<html><head></head><body><h2>Appearance</h2><p>Josuke is a...</p><table>...</table></body></html>",
+    "article": "The tentatively-named Josuke Higashikata...",
+    "title": "Josuke Higashikata"
+  }
+]
+```
+
+With `{ rawPageContent: true }`:
+
+```json
+[
+  {
+    "id": "11883",
+    "url": "https://jojo.fandom.com/wiki/Josuke_Higashikata_(JoJolion)",
+    "img": "https://static.wikia.nocookie.net/jjba/images/d/d2/Jo2uke.png",
+    "rawPageContent": "Josuke Higashikata\n\nHeight: 179 cm\nWeight: 65 kg\n\n## Appearance\n\nJosuke is a ...\n\n| Stand | User | Part |\n| --- | --- | --- |\n| Crazy Diamond | Josuke | 4 |",
     "article": "The tentatively-named Josuke Higashikata...",
     "title": "Josuke Higashikata"
   }
@@ -292,16 +340,18 @@ interface Article {
 }
 
 interface EnrichedArticle extends Article {
-  img?: string;         // Single primary image (from infobox or first image)
-  images?: string[];    // All image URLs from the page (when { images: true })
-  article?: string;     // Paragraph-only text (default extraction)
-  rawContent?: string;  // Full plain text including tables, lists, headers (when { rawContent: true })
-  rawHtml?: string;     // Cleaned HTML with structure preserved (when { rawContent: true })
+  img?: string;             // Single primary image (from infobox or first image)
+  images?: string[];        // All image URLs from the page (when { images: true })
+  article?: string;         // Paragraph-only text (default extraction)
+  rawContent?: string;      // Structured text with markdown tables/headers/lists, sidebar/quote/gallery stripped (when { rawContent: true })
+  rawHtml?: string;         // Cleaned HTML with structure preserved (when { rawContent: true })
+  rawPageContent?: string;  // Complete structured text with NOTHING stripped (when { rawPageContent: true })
 }
 
 interface GetArticleOptions {
-  images?: boolean;      // When true, extracts all image URLs into the images field
-  rawContent?: boolean;  // When true, extracts full page content into rawContent and rawHtml fields
+  images?: boolean;          // When true, extracts all image URLs into the images field
+  rawContent?: boolean;      // When true, extracts structured content into rawContent and rawHtml (strips sidebars/quotes/galleries)
+  rawPageContent?: boolean;  // When true, extracts complete page content with nothing removed into rawPageContent
 }
 ```
 
@@ -310,9 +360,9 @@ interface GetArticleOptions {
 ## 🧪 Testing & Examples
 
 Test scripts with assertions are available in the `tests/` directory:
-- `search.ts` — Tests `search()` with and without `{ images: true }` and `{ rawContent: true }`, validates enriched article fields.
+- `search.ts` — Tests `search()` with and without `{ images: true }`, `{ rawContent: true }`, and `{ rawPageContent: true }`, validates enriched article fields.
 - `searchResults.ts` — Tests `searchResults()`, validates raw metadata and limit behavior.
-- `getArticles.ts` — Tests `getArticle()` with and without `{ images: true }`, `{ rawContent: true }`, and both combined, validates all fields.
+- `getArticles.ts` — Tests `getArticle()` with and without `{ images: true }`, `{ rawContent: true }`, `{ rawPageContent: true }`, and combined options, validates all fields.
 - `allItems.ts` — Tests `listAllArticles`, `streamAllArticles`, and `getAllArticles` with and without images option.
 - `articleCount.ts` — Tests `getArticleCount()`, validates positive integer and consistency.
 - `streamToFiles.ts` — Streams enriched articles with images to temp files, validates file contents, cleans up.
