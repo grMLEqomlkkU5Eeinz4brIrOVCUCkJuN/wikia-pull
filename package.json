@@ -7,7 +7,18 @@
 		"build": "tsc",
 		"test": "node ./dist/tests/getArticles.js && node ./dist/tests/search.js && node ./dist/tests/searchResults.js && node ./dist/tests/allItems.js && node ./dist/tests/articleCount.js && node ./dist/tests/buildIndex.js && node ./dist/tests/streamToFiles.js"
 	},
-	"keywords": [],
+	"keywords": [
+		"wikia",
+		"fandom",
+		"wiki",
+		"scraper",
+		"api",
+		"cheerio",
+		"web-scraping",
+		"mediawiki",
+		"articles",
+		"search"
+	],
 	"author": "",
 	"license": "ISC",
 	"description": "",
