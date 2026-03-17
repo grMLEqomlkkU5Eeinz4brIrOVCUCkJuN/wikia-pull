@@ -7,7 +7,12 @@ import WikiIndex from "./WikiIndex";
 // Define a more complete article type that includes the scraped content
 interface EnrichedArticle extends Dto.Article {
 	img?: string;
+	images?: string[];
 	article?: string;
+}
+
+interface GetArticleOptions {
+	images?: boolean;
 }
 
 const DEFAULT_HEADERS = {
@@ -102,23 +107,23 @@ class WikiaPull {
 	}
 
 	// Get full content for all articles (useful for RAG). Optionally limit total items.
-	async getAllArticles(maxItems?: number): Promise<EnrichedArticle[]> {
+	async getAllArticles(maxItems?: number, options?: GetArticleOptions): Promise<EnrichedArticle[]> {
 		const list = await this.listAllArticles(maxItems);
 		const results: EnrichedArticle[] = [];
 		for (let i = 0; i < list.length; i++) {
-			results.push(await this.getArticle(list[i]));
+			results.push(await this.getArticle(list[i], options));
 		}
 		return results;
 	}
 
 	// Async generator variant to stream results progressively
-	async *streamAllArticles(maxItems?: number): AsyncGenerator<EnrichedArticle> {
+	async *streamAllArticles(maxItems?: number, options?: GetArticleOptions): AsyncGenerator<EnrichedArticle> {
 		let produced = 0;
 		let cursor: string | undefined = undefined;
 		while (true) {
 			const { articles, next } = await this.#fetchAllPagesBatch(cursor);
 			for (const article of articles) {
-				const enriched = await this.getArticle(article);
+				const enriched = await this.getArticle(article, options);
 				yield enriched;
 				produced++;
 				if (typeof maxItems === "number" && produced >= maxItems) {
@@ -164,7 +169,7 @@ class WikiaPull {
 		}
 	}
 
-	async getArticle(article: Dto.Article): Promise<EnrichedArticle> {
+	async getArticle(article: Dto.Article, options?: GetArticleOptions): Promise<EnrichedArticle> {
 		if (!article.id && !article.title) {
 			throw new Error("Article id or title is required");
 		}
@@ -195,6 +200,15 @@ class WikiaPull {
 			...article,
 			img: $('.pi-image-thumbnail').prop("src") || $('.image').prop("href") || undefined,
 		};
+
+		if (options?.images) {
+			const images: string[] = [];
+			$('img').each((_: number, el: Element) => {
+				const src = $(el).attr('src');
+				if (src) images.push(src);
+			});
+			enrichedArticle.images = images;
+		}
 
 		$("aside").remove();
 		$(".cquote").remove();
@@ -246,11 +260,11 @@ class WikiaPull {
 		}));
 	}
 
-	async search(query: string) :Promise<EnrichedArticle[]> {
+	async search(query: string, options?: GetArticleOptions) :Promise<EnrichedArticle[]> {
 		const articles = await this.searchResults(query);
 		const articleData: EnrichedArticle[] = [];
 		for (let i = 0; i < articles.length; i++) {
-			articleData.push(await this.getArticle(articles[i]))
+			articleData.push(await this.getArticle(articles[i], options))
 		}
 
 		return articleData;
@@ -324,3 +338,4 @@ class WikiaPull {
 }
 
 export default WikiaPull;
+export type { EnrichedArticle, GetArticleOptions };

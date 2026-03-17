@@ -1,63 +1,75 @@
 import WikiaPull from "../src/WikiaPull";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
+
+function assert(condition: boolean, message: string): void {
+	if (!condition) throw new Error(`Assertion failed: ${message}`);
+}
 
 async function main() {
 	const fandom = process.argv[2] || "roblox-blackhawk-rescue-mission-5";
-	const max = process.argv[3] ? parseInt(process.argv[3], 10) : 10;
-	const outputDir = process.argv[4] || "./output";
+	const max = process.argv[3] ? parseInt(process.argv[3], 10) : 5;
 
 	const wiki = new WikiaPull(fandom);
 
-	// Create output directory if it doesn't exist
-	if (!fs.existsSync(outputDir)) {
-		fs.mkdirSync(outputDir, { recursive: true });
-	}
+	// Use a temp directory so tests don't pollute the project
+	const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "wikia-pull-stream-"));
 
-	console.log(`Streaming up to ${max} articles from ${fandom}.fandom.com to ${outputDir}/...`);
+	console.log(`Testing streamToFiles (${max} articles from ${fandom})...`);
 
 	let successCount = 0;
 	let errorCount = 0;
-	const errors: string[] = [];
 
-	for await (const article of wiki.streamAllArticles(max)) {
+	for await (const article of wiki.streamAllArticles(max, { images: true })) {
 		try {
-			// Create filename from title (sanitize for filesystem)
 			const filename = article.title
-				.replace(/[<>:"/\\|?*]/g, '_') // Replace invalid chars
-				.replace(/\s+/g, '_') // Replace spaces with underscores
-				.substring(0, 100); // Limit length
+				.replace(/[<>:"/\\|?*]/g, '_')
+				.replace(/\s+/g, '_')
+				.substring(0, 100);
 
 			const filepath = path.join(outputDir, `${filename}.txt`);
-			
-			// Write article content to file
+
+			const imageLines = (article.images && article.images.length > 0)
+				? article.images.join("\n")
+				: "None";
+
 			const content = `Title: ${article.title}
 URL: ${article.url}
 ID: ${article.id}
 Image: ${article.img || 'None'}
+Images:
+${imageLines}
 
 Content:
 ${article.article || 'No content available'}`;
 
 			fs.writeFileSync(filepath, content, 'utf8');
-			console.log(`✓ ${successCount + 1}: ${article.title} -> ${filename}.txt`);
+
+			// Verify the file was written and can be read back
+			assert(fs.existsSync(filepath), `file should exist: ${filepath}`);
+			const readBack = fs.readFileSync(filepath, 'utf8');
+			assert(readBack.includes(article.title), "file should contain the article title");
+			assert(readBack.includes("Images:"), "file should contain images section");
+
+			console.log(`  ✓ ${successCount + 1}: ${article.title}`);
 			successCount++;
 		} catch (error) {
 			errorCount++;
-			const errorMsg = `Failed to write ${article.title}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-			errors.push(errorMsg);
-			console.error(`✗ ${errorMsg}`);
+			console.error(`  ✗ Failed: ${article.title}: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}
 
-	console.log(`\nSummary:`);
-	console.log(`- Successfully wrote: ${successCount} files`);
-	console.log(`- Errors: ${errorCount}`);
-	
-	if (errors.length > 0) {
-		console.log(`\nErrors:`);
-		errors.forEach(err => console.log(`  - ${err}`));
-	}
+	assert(successCount > 0, "should have written at least one file");
+	assert(errorCount === 0, `should have no errors, got ${errorCount}`);
+
+	// Cleanup
+	const files = fs.readdirSync(outputDir);
+	for (const f of files) fs.unlinkSync(path.join(outputDir, f));
+	fs.rmdirSync(outputDir);
+
+	console.log(`  ✓ wrote and verified ${successCount} files (cleaned up)`);
+	console.log("\nAll streamToFiles tests passed.");
 }
 
 main().catch((err) => {

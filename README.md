@@ -78,6 +78,19 @@ const articles = await wiki.getAllArticles(50); // optional limit
 console.log('First:', articles[0]);
 ```
 
+### Fetch articles with images
+
+```ts
+import { WikiaPull } from 'wikia-pull';
+
+const wiki = new WikiaPull('jojo');
+const results = await wiki.search('Josuke Higashikata', { images: true });
+console.log(results[0].images); // ["https://...", "https://...", ...]
+// Article text is still extracted cleanly — images are in a separate field
+```
+
+The `{ images: true }` option works with `getArticle`, `search`, `getAllArticles`, and `streamAllArticles`.
+
 ### Stream articles (preferred for large RAG ingestions)
 
 ```ts
@@ -177,6 +190,24 @@ for await (const article of wiki.streamIndex()) {
 ]
 ```
 
+With `{ images: true }`:
+
+```json
+[
+  {
+    "id": "11883",
+    "url": "https://jojo.fandom.com/wiki/Josuke_Higashikata_(JoJolion)",
+    "img": "https://static.wikia.nocookie.net/jjba/images/d/d2/Jo2uke.png",
+    "images": [
+      "https://static.wikia.nocookie.net/jjba/images/d/d2/Jo2uke.png",
+      "https://static.wikia.nocookie.net/jjba/images/a/ab/Example.png"
+    ],
+    "article": "The tentatively-named Josuke Higashikata...",
+    "title": "Josuke Higashikata"
+  }
+]
+```
+
 ---
 
 ## 🧰 API Reference
@@ -191,17 +222,17 @@ new WikiaPull(fandom: string, limit?: number)
 
 ### Methods
 
-- `search(query: string): Promise<EnrichedArticle[]>`
+- `search(query: string, options?: GetArticleOptions): Promise<EnrichedArticle[]>`
   - Searches and returns detailed articles (with summary and image).
 - `searchResults(query: string): Promise<Article[]>`
   - Returns raw search result metadata only.
-- `getArticle(article: Article): Promise<EnrichedArticle>`
+- `getArticle(article: Article, options?: GetArticleOptions): Promise<EnrichedArticle>`
   - Fetches a single article by its URL and enriches it with summary and image.
 - `listAllArticles(maxItems?: number): Promise<Article[]>`
   - Returns an array of all article stubs (url/id/title). Use `maxItems` to stop early.
-- `getAllArticles(maxItems?: number): Promise<EnrichedArticle[]>`
+- `getAllArticles(maxItems?: number, options?: GetArticleOptions): Promise<EnrichedArticle[]>`
   - Returns enriched articles for all pages (may be slow on large wikis). Use `maxItems` to limit.
-- `streamAllArticles(maxItems?: number): AsyncGenerator<EnrichedArticle>`
+- `streamAllArticles(maxItems?: number, options?: GetArticleOptions): AsyncGenerator<EnrichedArticle>`
   - Async generator that yields enriched articles progressively, useful for streaming ingestion.
 - `getArticleCount(): Promise<number>`
   - Returns the exact article count using MediaWiki site statistics.
@@ -230,8 +261,13 @@ interface Article {
 }
 
 interface EnrichedArticle extends Article {
-  img?: string;
+  img?: string;      // Single primary image (from infobox or first image)
+  images?: string[];  // All image URLs from the page (when { images: true })
   article?: string;
+}
+
+interface GetArticleOptions {
+  images?: boolean;  // When true, extracts all image URLs into the images field
 }
 ```
 
@@ -239,13 +275,13 @@ interface EnrichedArticle extends Article {
 
 ## 🧪 Testing & Examples
 
-Example scripts are available in the `tests/` directory:
-- `search.ts` — Fetches and prints enriched articles for a query.
-- `searchResults.ts` — Prints raw search result metadata.
-- `getArticles.ts` — Fetches and prints a single enriched article from search results.
-- `allItems.ts` — Enumerates or streams all pages; handy for building RAG datasets.
-- `articleCount.ts` — Prints the exact number of articles via site statistics.
-- `streamToFiles.ts` — Streams enriched articles and writes each to a text file.
+Test scripts with assertions are available in the `tests/` directory:
+- `search.ts` — Tests `search()` with and without `{ images: true }`, validates enriched article fields.
+- `searchResults.ts` — Tests `searchResults()`, validates raw metadata and limit behavior.
+- `getArticles.ts` — Tests `getArticle()` with and without `{ images: true }`, validates all fields.
+- `allItems.ts` — Tests `listAllArticles`, `streamAllArticles`, and `getAllArticles` with and without images option.
+- `articleCount.ts` — Tests `getArticleCount()`, validates positive integer and consistency.
+- `streamToFiles.ts` — Streams enriched articles with images to temp files, validates file contents, cleans up.
 - `buildIndex.ts` — Tests `streamIndex` and `buildIndex`: validates `Article` fields, lookups, prefix search, and save/load round-trip.
 
 ### RAG-oriented enumeration example

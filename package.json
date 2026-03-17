@@ -1,12 +1,11 @@
 {
 	"name": "wikia-pull",
-	"version": "1.0.7",
+	"version": "1.0.8",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"scripts": {
 		"build": "tsc",
-		"test": "node ./dist/tests/getArticles.js && node ./dist/tests/search.js && node ./dist/tests/searchResults.js && node ./dist/tests/allItems.js && node ./dist/tests/articleCount.js && node ./dist/tests/buildIndex.js",
-		"test:stream": "node ./dist/tests/streamToFiles.js"
+		"test": "node ./dist/tests/getArticles.js && node ./dist/tests/search.js && node ./dist/tests/searchResults.js && node ./dist/tests/allItems.js && node ./dist/tests/articleCount.js && node ./dist/tests/buildIndex.js && node ./dist/tests/streamToFiles.js"
 	},
 	"keywords": [],
 	"author": "",
