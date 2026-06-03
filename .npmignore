@@ -1,6 +1,11 @@
-tests
-index.ts
-src
+# Anchored to the package root (leading slash) so the compiled output under
+# dist/ is NOT stripped. An unanchored "src" / "tests" would also match
+# dist/src and dist/tests and ship a broken package.
+/tests
+/index.ts
+/src
+/dist/tests
+/dist/types/tests
 node_modules
 eslint*
 tsconfig.json
