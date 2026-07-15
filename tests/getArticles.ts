@@ -21,7 +21,7 @@ async function main() {
 	assert(typeof article.url === "string" && article.url.startsWith("https://"), "article should have an https URL");
 	assert(typeof article.article === "string" && article.article.length > 0, "article should have body text");
 	assert(article.images === undefined, "images should be undefined when not requested");
-	// img is the legacy single-image field — can be string or undefined
+	// img: legacy single-image field. either a string or nothing
 	assert(article.img === undefined || typeof article.img === "string", "img should be undefined or a string");
 
 	console.log(`  ✓ getArticle returned "${article.title}" in ${elapsed}ms`);

@@ -347,10 +347,10 @@ class WikiaPull {
 		return articleData;
 	}
 
-	// Async generator that yields Article items one by one using list=allpages
-	// (the API equivalent of Special:AllPages), filtered to namespace 0
-	// non-redirects. No in-memory structure is built — pipe directly into a
-	// database, file, or any other sink of your choice.
+	// yields articles from list=allpages one by one.
+	// no in-memory structure, just streams them out.
+	// pipe straight to your db, file, whatever sink you have.
+	// (namespace 0 + non-redirects only)
 	async *streamIndex(maxItems?: number): AsyncGenerator<Dto.Article> {
 		let produced = 0;
 		let cursor: string | undefined = undefined;

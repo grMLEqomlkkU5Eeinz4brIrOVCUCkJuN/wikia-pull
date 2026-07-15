@@ -1,6 +1,7 @@
 # wikia-pull
 
 > A TypeScript implementation of [HermitPurple](https://github.com/Soft-Wet-Bot/HermitPurple), a Fandom/Wikia scraper originally written in JavaScript by [GeopJr](https://github.com/GeopJr).
+> Which is also why there are emojis and 
 
 **wikia-pull** allows you to search and fetch article data from MediaWiki-based platforms like Fandom and Wikia. It’s built with TypeScript for better type safety, maintainability, and developer experience in addition to features built for RAG ingestion in mind.
 
@@ -28,8 +29,8 @@ yarn add wikia-pull
 * Search Fandom/Wikia sites by keyword
 * Fetch full article summaries and metadata
 * Enumerate all pages via MediaWiki API (great for RAG corpora)
-* **Table structure preservation** — HTML tables are converted to markdown tables for optimal vector search and RAG chunking
-* **Multiple extraction modes** — `article` (paragraphs only), `rawContent` (structured with cleanup), `rawPageContent` (complete, nothing stripped)
+* **Table structure preservation**: HTML tables get converted to markdown for vector search and RAG systems that actually need structure
+* **Multiple extraction modes**: pick what you need. `article` for paragraphs, `rawContent` for structured text (tables/headers/lists), or `rawPageContent` for literally everything
 * Supports both CommonJS and ESModule usage
 * Handles sites with disabled APIs or custom structures
 
@@ -86,14 +87,14 @@ import { WikiaPull } from 'wikia-pull';
 const wiki = new WikiaPull('jojo');
 const results = await wiki.search('Josuke Higashikata', { images: true });
 console.log(results[0].images); // ["https://...", "https://...", ...]
-// Article text is still extracted cleanly — images are in a separate field
+// article text stays clean. images go to their own field
 ```
 
 The `{ images: true }` option works with `getArticle`, `search`, `getAllArticles`, and `streamAllArticles`.
 
 ### Fetch articles with raw content (tables, lists, headers)
 
-By default, only `<p>` tags are extracted into the `article` field — tables, lists, and headers are stripped. Use `{ rawContent: true }` to get structured content with tables preserved as markdown:
+By default, only `<p>` tags end up in the `article` field. tables, lists, headers get stripped. want them? pass `{ rawContent: true }` to get structured content with markdown tables:
 
 ```ts
 import { WikiaPull } from 'wikia-pull';
@@ -103,7 +104,7 @@ const results = await wiki.search('Josuke Higashikata', { rawContent: true });
 
 console.log(results[0].rawContent); // Structured text with markdown tables, headers, lists
 console.log(results[0].rawHtml);    // Cleaned HTML with structure preserved
-console.log(results[0].article);    // Still available — paragraph-only text (unchanged)
+console.log(results[0].article);    // still there. paragraph-only text, untouched
 ```
 
 Tables are converted to markdown format for optimal vector search and RAG performance:
@@ -123,7 +124,7 @@ The `{ rawContent: true }` option works with `getArticle`, `search`, `getAllArti
 
 ### Fetch complete unfiltered page content
 
-Use `{ rawPageContent: true }` when you want the entire page with **nothing stripped** — infoboxes, quotes, galleries, tables, and all other content are preserved. This is ideal for RAG systems where every piece of information matters:
+Want the whole page with nothing removed? use `{ rawPageContent: true }`. keeps infoboxes, quotes, galleries, tables. everything. good for RAG when you actually need every detail:
 
 ```ts
 import { WikiaPull } from 'wikia-pull';
@@ -132,7 +133,7 @@ const wiki = new WikiaPull('jojo');
 const results = await wiki.search('Josuke Higashikata', { rawPageContent: true });
 
 console.log(results[0].rawPageContent); // Complete page content, nothing removed
-console.log(results[0].article);        // Still available — paragraph-only text
+console.log(results[0].article);        // still there. paragraphs only
 ```
 
 `rawPageContent` uses the same structured extraction as `rawContent` (markdown tables, headers, lists) but runs **before** any DOM cleanup, so infobox data, quotes, and gallery captions are all included.
@@ -316,7 +317,7 @@ new WikiaPull(fandom: string, limit?: number)
 - `getArticleCount(): Promise<number>`
   - Returns the exact article count using MediaWiki site statistics.
 - `streamIndex(maxItems?: number): AsyncGenerator<Article>`
-  - Async generator that yields `Article` items using `list=allpages` (the API equivalent of `Special:AllPages`), filtered to namespace 0 non-redirects. No in-memory structure is built — pipe directly into a database, file, or any other sink.
+  - yields articles from `list=allpages` (no fancy in-memory index built). filters to namespace 0, skips redirects. pipe straight into your database, file, wherever you need them.
 - `buildIndex(maxItems?: number): Promise<WikiIndex>`
   - Convenience wrapper around `streamIndex` that collects all entries into an in-memory `WikiIndex` with O(1) lookups. For large wikis or custom storage use `streamIndex` instead.
 
@@ -324,11 +325,11 @@ new WikiaPull(fandom: string, limit?: number)
 
 Returned by `buildIndex`. Holds the full index in memory and provides fast lookups.
 
-- `lookupById(id: string): Article | undefined` — O(1) lookup by MediaWiki page ID.
-- `lookupByTitle(title: string): Article | undefined` — O(1) case-insensitive exact title match.
-- `searchByTitle(prefix: string): Article[]` — returns all entries whose title starts with `prefix` (case-insensitive).
-- `save(filepath: string): void` — serializes the index to a JSON file so it can be reloaded without re-scraping.
-- `WikiIndex.load(filepath: string): WikiIndex` — deserializes a previously saved index from a JSON file.
+- `lookupById(id: string): Article | undefined` - instant lookup by MediaWiki page ID (O(1))
+- `lookupByTitle(title: string): Article | undefined` - exact title match, case-insensitive (O(1))
+- `searchByTitle(prefix: string): Article[]` - finds all entries starting with that prefix (case-insensitive)
+- `save(filepath: string): void` - saves the index to JSON so you can reload it later without re-scraping
+- `WikiIndex.load(filepath: string): WikiIndex` - loads a previously saved index from a JSON file
 
 ### Types
 
@@ -360,13 +361,13 @@ interface GetArticleOptions {
 ## 🧪 Testing & Examples
 
 Test scripts with assertions are available in the `tests/` directory:
-- `search.ts` — Tests `search()` with and without `{ images: true }`, `{ rawContent: true }`, and `{ rawPageContent: true }`, validates enriched article fields.
-- `searchResults.ts` — Tests `searchResults()`, validates raw metadata and limit behavior.
-- `getArticles.ts` — Tests `getArticle()` with and without `{ images: true }`, `{ rawContent: true }`, `{ rawPageContent: true }`, and combined options, validates all fields.
-- `allItems.ts` — Tests `listAllArticles`, `streamAllArticles`, and `getAllArticles` with and without images option.
-- `articleCount.ts` — Tests `getArticleCount()`, validates positive integer and consistency.
-- `streamToFiles.ts` — Streams enriched articles with images to temp files, validates file contents, cleans up.
-- `buildIndex.ts` — Tests `streamIndex` and `buildIndex`: validates `Article` fields, lookups, prefix search, and save/load round-trip.
+- `search.ts` - validates `search()` with `{ images: true }`, `{ rawContent: true }`, `{ rawPageContent: true }`. checks the enriched article fields.
+- `searchResults.ts` - tests `searchResults()`. verifies raw metadata and limit behavior work right.
+- `getArticles.ts` - validates `getArticle()` with all the options: images, rawContent, rawPageContent, and combinations. checks every field.
+- `allItems.ts` - tests `listAllArticles`, `streamAllArticles`, `getAllArticles`. with and without the images option.
+- `articleCount.ts` - validates `getArticleCount()` returns a positive integer and stays consistent.
+- `streamToFiles.ts` - streams articles with images to temp files. verifies the content, then cleans up.
+- `buildIndex.ts` - tests `streamIndex` and `buildIndex` together. validates Article fields, lookups, prefix search, and the save/load round-trip.
 
 ### RAG-oriented enumeration example
 
